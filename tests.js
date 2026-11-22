@@ -53,17 +53,20 @@
 
     // ---------- settings.json
     let cfg = cfgFile();
-    ok('settings.json dibuat otomatis dengan default', cfg && cfg.expiryDays === 30 && cfg.escalation.length === 3 && cfg.escalation[0].unit === 'hours');
-    ok('Semua sakelar tindakan otomatis mati secara default', !cfg.autoActions && !cfg.allowKick && !cfg.allowTempban && !cfg.allowBan);
+    ok('settings.json dibuat otomatis: 10 tahap ala MEE6 (1 warn → timeout 5 menit … 10 → temporary ban 30 hari)', cfg && cfg.expiryDays === 30 && cfg.escalation.length === 10 &&
+      cfg.escalation[0].duration === 5 && cfg.escalation[0].unit === 'minutes' && cfg.escalation[8].action === 'kick' && cfg.escalation[9].action === 'tempban' && cfg.escalation[9].duration === 30);
+    ok('Sakelar hukuman otomatis, kick, ban, temporary ban nyala secara default', cfg.autoActions && cfg.allowKick && cfg.allowTempban && cfg.allowBan);
+    // pakai pengaturan tes yang lebih sederhana (sakelar mati, 3 tahap) supaya alur tes bisa dikontrol
+    setCfg({ autoActions: false, allowKick: false, allowBan: false, allowTempban: false, escalation: [{ warns: 3, action: 'timeout', duration: 1, unit: 'hours' }, { warns: 5, action: 'timeout', duration: 1, unit: 'days' }, { warns: 7, action: 'tempban', duration: 7, unit: 'days' }] });
     let r = await slash('/mod warn member: @Sam reason: tes', ID.alex);
     ok('Sebelum role staff diatur: member non-admin ditolak', r.recs.some((x) => x.ephemeralFor === ID.alex && /Role staff belum diatur/.test(text(x))) && warnsOf(ID.sam).length === 0);
 
     // ---------- panel Test settings
     const def = S.settingsDef;
     ok('bot.js mendaftarkan panel Test settings', def && def.fields.length >= 10);
-    setCfg({ staffRoleIds: ['203', '202'], modLogChannelId: '302', warnChannelId: '303', manualUnbanChannelId: '302' });
+    setCfg({ staffRoleIds: ['203', '202'], modLogChannelId: '302', warnChannelId: '303', staffChannelId: '303' });
     cfg = cfgFile();
-    ok('Panel menyimpan ke settings.json (role staff ganda, channel)', cfg.staffRoleIds.join() === '203,202' && cfg.modLogChannelId === '302' && cfg.warnChannelId === '303' && cfg.manualUnbanChannelId === '302');
+    ok('Panel menyimpan ke settings.json (role staff ganda, channel)', cfg.staffRoleIds.join() === '203,202' && cfg.modLogChannelId === '302' && cfg.warnChannelId === '303' && cfg.staffChannelId === '303');
     setCfg({ staffRoleIds: ['203'] });
     let v = def.get();
     ok('Panel membaca pengaturan (durasi → angka + satuan)', v.staffRoleIds.join() === '203' && v.escalation[0].duration === 1 && v.escalation[0].unit === 'hours');
@@ -106,6 +109,7 @@
     r = await slash('/mod warn member: @Sam reason: toxic', ID.alex);
     await wait(200);
     const samCards = since(0).filter((x) => x.channelId === '303' && /<@103>/.test(text(x)));
+    ok('Kartu mod-log/warn mencantumkan DM gagal', samCards.length === 1 && /DM:\*\* 📪 gagal/.test(text(samCards[0])));
     ok('DM gagal → warn & pengumuman tetap jalan', warnsOf(ID.sam).length === 1 && samCards.length === 1 &&
       since(0).some((x) => x.ephemeralFor === ID.alex && /DM gagal/.test(text(x))));
     S.user(ID.sam).dmClosed = false;
@@ -146,8 +150,9 @@
     ok('2 warn dalam 7 hari → ban sementara', S.user(ID.budi).gone === 'ban' && g().tempBans.some((b) => b.userId === ID.budi));
     S.advance(3 * 3600e3);
     await wait(300);
-    ok('Ban sementara selesai → unban otomatis + log', S.user(ID.budi).gone === 'unbanned' && !g().tempBans.length &&
-      since(0).some((x) => x.channelId === '302' && /Ban sementara selesai/.test(text(x))));
+    ok('Temporary ban diumumkan ke channel staff', since(0).some((x) => x.channelId === '303' && /⛔ Temporary ban/.test(text(x)) && /<@110>/.test(text(x))));
+    ok('Temporary ban selesai → unban otomatis + notifikasi channel staff', S.user(ID.budi).gone === 'unbanned' && !g().tempBans.length &&
+      since(0).some((x) => x.channelId === '303' && /Temporary ban selesai/.test(text(x))));
     S.rejoin(ID.budi, true);
 
     // ---------- eskalasi: dihitung dari warn aktif (masa berlaku), tahap tertinggi menang
@@ -235,13 +240,13 @@
     ok('Detail hanya menampilkan warn aktif', out.some((x) => /\*\*1\*\* warn aktif/.test(text(x)) && /baru/.test(text(x)) && !/flood/.test(text(x))));
 
     // ---------- /mod warning-history (all time)
-    ok('warning-clear menyimpan warn sebagai riwayat (tidak dihapus)', allWarnsOf(ID.riley).length === 4 && allWarnsOf(ID.riley).every((w) => w.clearedAt && w.clearedBy === ID.alex));
+    ok('warning-clear menghapus warn aktif secara permanen dari data', allWarnsOf(ID.riley).length === 0);
     r = await slash('/mod warning-history member: @Riley', ID.riley);
     ok('Non-staff tidak bisa /mod warning-history', r.recs.every((x) => x.ephemeralFor === ID.riley) && r.recs.some((x) => /Hanya staff/.test(text(x))));
     r = await slash('/mod warning-history member: @Riley', ID.alex);
     let hist = r.recs.find((x) => /Riwayat warn/.test(text(x)));
     ok('Riwayat dikirim privat ke staff (V2)', hist && hist.v2 && hist.ephemeralFor === ID.alex);
-    ok('Riwayat memuat warn yang sudah di-clear + siapa yang menghapus', /total \*\*4\*\* warn/.test(text(hist)) && /dihapus 4/.test(text(hist)) && /Dihapus oleh <@101>/.test(text(hist)) && /spam link/.test(text(hist)));
+    ok('Warn yang di-clear tidak muncul lagi di riwayat', /total \*\*0\*\* warn/.test(text(hist)) && /belum pernah diberi warn/.test(text(hist)));
     r = await slash('/mod warning-history member: @Budi', ID.alex);
     hist = r.recs.find((x) => /Riwayat warn/.test(text(x)));
     ok('Riwayat memuat warn kedaluwarsa dan aktif sekaligus', /flood lagi/.test(text(hist)) && /baru/.test(text(hist)) && /Kedaluwarsa/.test(text(hist)) && /🟢 aktif 1/.test(text(hist)));
@@ -282,11 +287,12 @@
     const n0 = S.records.length;
     await click(det2, (b) => /Ya, hapus/.test(b.label || ''), ID.alex);
     const gone = allWarnsOf('118').find((w) => w.id === firstId);
-    ok('Ya, hapus → cuma warn itu yang dihapus', gone.clearedAt && gone.clearedBy === ID.alex && warnsOf('118').length === 12);
+    ok('Ya, hapus → cuma warn itu yang dihapus permanen', !gone && allWarnsOf('118').length === 12 && warnsOf('118').length === 12);
     ok('Panel ter-update (12 warn aktif + pesan sukses)', /\*\*12\*\* warn aktif/.test(text(det2)) && /Warn \*\*#13\*\*.*dihapus/.test(text(det2)) && !/Alasan:\*\* catatan 12/.test(text(det2)));
     ok('Penghapusan tercatat di mod-log', S.records.slice(n0).some((x) => x.channelId === '302' && /Warn dihapus/.test(text(x)) && /catatan 12/.test(text(x))));
     r = await slash('/mod warning-history member: @Joko', ID.alex);
-    ok('Warn yang dihapus tetap ada di riwayat', /Dihapus oleh <@101>/.test(text(r.recs.find((x) => /Riwayat warn/.test(text(x))))));
+    const h12 = text(r.recs.find((x) => /Riwayat warn/.test(text(x))));
+    ok('Warn yang dihapus hilang juga dari riwayat', /total \*\*12\*\* warn/.test(h12) && !/catatan 12/.test(h12));
     await click(det2, 'Berikutnya', ID.alex);
     ok('Navigasi halaman di warning-detail', /Halaman 2\/2/.test(text(det2)) && delBtns().length === 2);
 
@@ -305,6 +311,22 @@
     const st = cfgFile().escalation[0];
     ok('Panel: Kick → Timeout 3 menit tersimpan (satuan ikut pilihan yang tampil)', document.getElementById('sm-err').textContent === '' && st.action === 'timeout' && st.duration === 3 && st.unit === 'minutes');
     ok('settings.json: satuan durasi salah → pesan jelas', /satuan durasi/.test(setStages(() => [{ warns: 1, action: 'timeout', duration: 3, unit: 'menit' }]) || ''));
+
+    // ---------- batas 15 tahap
+    ok('Tahap eskalasi maksimal 15', /maksimal 15/.test(setStages(() => Array.from({ length: 16 }, (_, k) => ({ warns: k + 1, action: 'none' }))) || ''));
+    ok('15 tahap masih boleh', setStages(() => Array.from({ length: 15 }, (_, k) => ({ warns: k + 1, action: 'none' }))) === null);
+
+    // ---------- tindakan ditolak Discord tidak diklaim berhasil
+    setStages(() => [{ warns: 1, action: 'timeout', duration: 5, unit: 'minutes' }]);
+    setCfg({ autoActions: true });
+    const nRej = S.records.length;
+    await slash('/mod warn member: @Kamu reason: tes owner', ID.alex);
+    await wait(300);
+    const rej = S.records.slice(nRej);
+    const rejCard = rej.find((x) => x.channelId === '302' && /Warn diberikan/.test(text(x)));
+    const rejReply = rej.find((x) => x.ephemeralFor === ID.alex && /Warn tercatat/.test(text(x)));
+    ok('Timeout ditolak Discord → kartu & konfirmasi bilang gagal, bukan berhasil', rejCard && /❌ gagal: Missing Permissions/.test(text(rejCard)) && !/Timeout 5 menit ✅/.test(text(rejCard)) &&
+      rejReply && /❌ gagal/.test(text(rejReply)) && !(S.user(ID.kamu).timeoutUntil > S.vNow()));
 
     // ---------- tidak ada error di konsol
     const errs = S.logs.filter((l) => l.level === 'error' && !/FAIL/.test(l.text));

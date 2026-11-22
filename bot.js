@@ -24,6 +24,7 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const MAX_TIMEOUT = 28 * DAY;          // batas timeout dari Discord
 const MAX_EXPIRY_DAYS = 365;
+const MAX_STAGES = 15;                 // maksimal tahap eskalasi
 const PAGE_SIZE = 10;                  // member per halaman di warning-list
 const PANEL_TTL = 15 * MINUTE;         // umur sesi panel warning-list
 const SWEEP_EVERY = MINUTE;            // cek ban sementara & data kedaluwarsa
@@ -41,17 +42,24 @@ const DEFAULT_SETTINGS = {
   staffRoleIds: [],            // ID role yang boleh memakai /mod (admin selalu boleh)
   modLogChannelId: null,       // ID channel mod-log
   warnChannelId: null,         // ID channel pengumuman warn
-  manualUnbanChannelId: null,  // ID channel staff kalau unban otomatis gagal
+  staffChannelId: null,        // ID channel staff: hasil temporary ban & unban (kosong = mod-log)
   expiryDays: 30,              // masa berlaku warn, 1–365 hari
-  // sakelar pengaman — semua MATI secara default
-  autoActions: false,          // sakelar utama tindakan otomatis
-  allowBan: false,
-  allowKick: false,
-  allowTempban: false,
-  escalation: [                // action: none | timeout | kick | tempban | ban ; unit: minutes | hours | days
-    { warns: 3, action: 'timeout', duration: 1, unit: 'hours' },
+  // sakelar hukuman otomatis (nilai awal mengikuti aturan server saat ini; bisa dimatikan)
+  autoActions: true,           // sakelar utama hukuman otomatis
+  allowBan: true,
+  allowKick: true,
+  allowTempban: true,
+  escalation: [                // maks 15 tahap. action: none | timeout | kick | tempban | ban ; unit: minutes | hours | days
+    { warns: 1, action: 'timeout', duration: 5, unit: 'minutes' },
+    { warns: 2, action: 'timeout', duration: 10, unit: 'minutes' },
+    { warns: 3, action: 'timeout', duration: 30, unit: 'minutes' },
+    { warns: 4, action: 'timeout', duration: 2, unit: 'hours' },
     { warns: 5, action: 'timeout', duration: 1, unit: 'days' },
-    { warns: 7, action: 'tempban', duration: 7, unit: 'days' },
+    { warns: 6, action: 'timeout', duration: 3, unit: 'days' },
+    { warns: 7, action: 'timeout', duration: 5, unit: 'days' },
+    { warns: 8, action: 'timeout', duration: 7, unit: 'days' },
+    { warns: 9, action: 'kick' },
+    { warns: 10, action: 'tempban', duration: 30, unit: 'days' },
   ],
 };
 
@@ -123,11 +131,13 @@ function settingsToFile(cfg) {
 // format file → pengaturan internal; kembalikan { config } atau { error }
 function settingsFromFile(raw) {
   const v = { ...DEFAULT_SETTINGS, ...raw };
+  if (v.staffChannelId == null && raw?.manualUnbanChannelId) v.staffChannelId = raw.manualUnbanChannelId; // nama lama
   const isId = (x) => x === null || x === '' || /^\d+$/.test(String(x));
   if (!Array.isArray(v.staffRoleIds) || !v.staffRoleIds.every((x) => /^\d+$/.test(String(x)))) return { error: 'staffRoleIds harus daftar ID role (angka).' };
-  for (const k of ['modLogChannelId', 'warnChannelId', 'manualUnbanChannelId']) if (!isId(v[k])) return { error: `${k} harus ID channel (angka) atau null.` };
+  for (const k of ['modLogChannelId', 'warnChannelId', 'staffChannelId']) if (!isId(v[k])) return { error: `${k} harus ID channel (angka) atau null.` };
   if (!Number.isInteger(v.expiryDays) || v.expiryDays < 1 || v.expiryDays > MAX_EXPIRY_DAYS) return { error: 'Masa berlaku warn harus 1–365 hari.' };
   if (!Array.isArray(v.escalation)) return { error: 'escalation harus berupa daftar tahap.' };
+  if (v.escalation.length > MAX_STAGES) return { error: `Tahap eskalasi maksimal ${MAX_STAGES}.` };
   const escalation = [];
   for (const [n, r] of v.escalation.entries()) {
     const stage = { warns: r.warns, action: r.action }; // periodDays (versi lama) diabaikan
@@ -145,7 +155,7 @@ function settingsFromFile(raw) {
       staffRoleIds: [...new Set(v.staffRoleIds.map(String))],
       modLogChannelId: v.modLogChannelId ? String(v.modLogChannelId) : null,
       warnChannelId: v.warnChannelId ? String(v.warnChannelId) : null,
-      manualUnbanChannelId: v.manualUnbanChannelId ? String(v.manualUnbanChannelId) : null,
+      staffChannelId: v.staffChannelId ? String(v.staffChannelId) : null,
       expiryDays: v.expiryDays,
       autoActions: v.autoActions === true,
       allowBan: v.allowBan === true,
@@ -159,13 +169,15 @@ function saveSettings(cfg) {
   fs.writeFileSync(SETTINGS_FILE + '.tmp', JSON.stringify(settingsToFile(cfg), null, 2));
   fs.renameSync(SETTINGS_FILE + '.tmp', SETTINGS_FILE);
 }
+// Cadangan kalau settings.json rusak/tidak valid: semua hukuman otomatis MATI (aman)
+const safeSettings = () => settingsFromFile({ autoActions: false, allowBan: false, allowKick: false, allowTempban: false }).config;
 function loadSettings() {
   let raw;
   try {
     raw = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) : null;
   } catch (e) {
-    console.error(`⚠ settings.json tidak bisa dibaca (${e.message}) — pakai pengaturan default.`);
-    return settingsFromFile({}).config;
+    console.error(`⚠ settings.json tidak bisa dibaca (${e.message}) — pakai pengaturan aman (hukuman otomatis mati).`);
+    return safeSettings();
   }
   if (!raw) {
     // versi lama menyimpan pengaturan di data/moderation.json → pindahkan
@@ -184,8 +196,8 @@ function loadSettings() {
   }
   const { config, error } = settingsFromFile(raw);
   if (error) {
-    console.error(`⚠ settings.json tidak valid: ${error} — pakai pengaturan default.`);
-    return settingsFromFile({}).config;
+    console.error(`⚠ settings.json tidak valid: ${error} — pakai pengaturan aman (hukuman otomatis mati).`);
+    return safeSettings();
   }
   return config;
 }
@@ -251,11 +263,16 @@ async function postToChannels(guild, targets, payload) {
   return notes;
 }
 
+// Pemberitahuan temporary ban & unban → channel staff (kalau kosong: mod-log)
+function notifyStaff(guild, cfg, container) {
+  return postToChannels(guild, [['staff', cfg.staffChannelId || cfg.modLogChannelId]], { components: [container], flags: V2, allowedMentions: NO_PINGS });
+}
+
 // ------------------------------------------------------------------ logika warn
 const expiresAt = (w, cfg) => w.createdAt + cfg.expiryDays * DAY;
 const isActive = (w, cfg, now = Date.now()) => now < expiresAt(w, cfg);
 
-// Warn tidak pernah dihapus dari data: yang di-clear ditandai clearedAt (untuk riwayat all time)
+// Warn yang dihapus staff dibuang permanen dari data. clearedAt cuma ada di data versi lama.
 const isLive = (w, cfg) => !w.clearedAt && isActive(w, cfg);
 function activeWarns(g, userId) {
   return g.warns.filter((w) => w.userId === userId && isLive(w, g.config)).sort((a, b) => a.createdAt - b.createdAt);
@@ -293,10 +310,21 @@ async function executeStage(guild, member, stage, reason) {
         return `${describeStage(stage)} ✅`;
       case 'tempban': {
         const until = Date.now() + stage.durationMs;
-        await guild.members.ban(member.id, { reason });
+        try {
+          await guild.members.ban(member.id, { reason });
+        } catch (e) {
+          await notifyStaff(guild, g.config, card(COLOR.danger, '⚠️ Temporary ban gagal', [
+            `**Member:** <@${member.id}>`, `**Durasi:** ${formatDuration(stage.durationMs)}`, `**Error:** ${e.message}`,
+          ], `<t:${unix(Date.now())}:f>`));
+          throw e;
+        }
         g.tempBans = g.tempBans.filter((b) => b.userId !== member.id);
         g.tempBans.push({ userId: member.id, unbanAt: until });
         store.save();
+        await notifyStaff(guild, g.config, card(COLOR.danger, '⛔ Temporary ban', [
+          `**Member:** <@${member.id}>`, `**Durasi:** ${formatDuration(stage.durationMs)}`,
+          `**Unban otomatis:** <t:${unix(until)}:f> (<t:${unix(until)}:R>)`, `**Alasan:** ${reason}`,
+        ], `<t:${unix(Date.now())}:f>`));
         return `${describeStage(stage)} ✅ (unban otomatis <t:${unix(until)}:f>)`;
       }
       case 'ban':
@@ -342,7 +370,7 @@ const commands = [
       .addUserOption((o) => o.setName('member').setDescription('Member yang warn-nya dihapus').setRequired(true)))
     .addSubcommand((s) => s.setName('warning-detail').setDescription('Lihat warn aktif member + hapus warn tertentu')
       .addUserOption((o) => o.setName('member').setDescription('Member yang warn-nya dilihat').setRequired(true)))
-    .addSubcommand((s) => s.setName('warning-history').setDescription('Riwayat semua warn member (aktif, kedaluwarsa, dihapus)')
+    .addSubcommand((s) => s.setName('warning-history').setDescription('Riwayat warn member (aktif & kedaluwarsa)')
       .addUserOption((o) => o.setName('member').setDescription('Member yang riwayatnya dilihat').setRequired(true))),
 ];
 
@@ -372,6 +400,7 @@ async function cmdWarn(i, g) {
 
   // DM dulu (sebelum kick/ban, karena setelah itu DM biasanya tidak bisa sampai). Gagal DM tidak menghentikan proses.
   let dmStatus = '📨 DM terkirim';
+  let dmFailed = false;
   try {
     await user.send({
       components: [card(COLOR.warn, `⚠️ Kamu menerima warn di ${i.guild.name}`, [
@@ -384,6 +413,7 @@ async function cmdWarn(i, g) {
       allowedMentions: NO_PINGS,
     });
   } catch {
+    dmFailed = true;
     dmStatus = '📪 DM gagal (DM member tertutup) — warn tetap tercatat';
   }
 
@@ -395,6 +425,7 @@ async function cmdWarn(i, g) {
     `**Alasan:** ${reason}`,
     `**Warn aktif:** ${count} (berlaku ${cfg.expiryDays} hari)`,
     `**Tindakan:** ${actionText}`,
+    ...(dmFailed ? ['**DM:** 📪 gagal dikirim (DM member tertutup)'] : []),
   ], `ID warn ${warn.id} • <t:${unix(warn.createdAt)}:f>`);
   const notes = await postToChannels(i.guild, [['mod-log', cfg.modLogChannelId], ['warn', cfg.warnChannelId]], {
     components: [announce], flags: V2, allowedMentions: NO_PINGS,
@@ -494,8 +525,8 @@ async function cmdClear(i, g) {
   const user = i.options.getUser('member', true);
   const live = activeWarns(g, user.id);
   const removed = live.length;
-  const now = Date.now();
-  for (const w of live) { w.clearedAt = now; w.clearedBy = i.user.id; } // tetap tersimpan di riwayat
+  const removeIds = new Set(live.map((w) => w.id));
+  g.warns = g.warns.filter((w) => !removeIds.has(w.id)); // hapus permanen (log lama di channel tetap ada)
   store.save();
 
   let timeoutNote;
@@ -524,7 +555,7 @@ async function cmdClear(i, g) {
 
 // ------------------------------------------------------------------ /mod warning-detail
 // Warn aktif satu member, tiap warn punya tombol 🗑 Hapus (dengan konfirmasi).
-// Warn yang dihapus ditandai clearedAt/clearedBy → tetap muncul di /mod warning-history.
+// Warn yang dihapus dibuang permanen dari data (log lama di channel tetap ada).
 const DETAIL_PAGE = 10;
 function warnDetailPanel(g, sid, session, notice) {
   const cfg = g.config;
@@ -539,7 +570,7 @@ function warnDetailPanel(g, sid, session, notice) {
       ...(notice ? [notice, ''] : []),
       '## 🔎 Detail warn',
       `<@${session.userId}> • **${warns.length}** warn aktif`,
-      `-# Warn berlaku ${cfg.expiryDays} hari • hapus = dibatalkan, tetap tercatat di /mod warning-history`,
+      `-# Warn berlaku ${cfg.expiryDays} hari • 🗑 Hapus = hapus permanen`,
     ].join('\n')))
     .addSeparatorComponents((s) => s.setDivider(true).setSpacing(SeparatorSpacingSize.Small));
 
@@ -599,8 +630,7 @@ async function onDetailButton(i) {
     if (!w) notice = '⚠️ Warn itu sudah tidak aktif (mungkin sudah dihapus atau kedaluwarsa).';
     else {
       const n = live.indexOf(w) + 1;
-      w.clearedAt = Date.now();
-      w.clearedBy = i.user.id;
+      g.warns = g.warns.filter((x) => x.id !== w.id); // hapus permanen
       store.save();
       const left = live.length - 1;
       notice = `✅ Warn **#${n}** (${clip(w.reason, 60)}) dihapus.`;
@@ -611,7 +641,7 @@ async function onDetailButton(i) {
           `**Warn #${n}:** ${clip(w.reason, 300)}`,
           `**Diberikan oleh:** <@${w.moderatorId}> • <t:${unix(w.createdAt)}:f>`,
           `**Warn aktif sekarang:** ${left}`,
-        ], `ID warn ${w.id} • <t:${unix(w.clearedAt)}:f>`)],
+        ], `ID warn ${w.id} • <t:${unix(Date.now())}:f>`)],
         flags: V2, allowedMentions: NO_PINGS,
       });
     }
@@ -640,7 +670,7 @@ function historyPanel(g, sid, userId, page) {
     .addTextDisplayComponents((t) => t.setContent([
       `## 📜 Riwayat warn`,
       `<@${userId}> • total **${all.length}** warn`,
-      `-# 🟢 aktif ${active} • ⚪ kedaluwarsa ${all.length - active - cleared} • 🧹 dihapus ${cleared}`,
+      `-# 🟢 aktif ${active} • ⚪ kedaluwarsa ${all.length - active - cleared}${cleared ? ` • 🧹 dihapus ${cleared}` : ''}`,
     ].join('\n')))
     .addSeparatorComponents((s) => s.setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   if (!all.length) c.addTextDisplayComponents((t) => t.setContent('✨ Member ini belum pernah diberi warn.'));
@@ -702,21 +732,15 @@ async function sweep() {
       for (const b of due) {
         try {
           await guild.members.unban(b.userId, 'Ban sementara selesai');
-          await postToChannels(guild, [['mod-log', g.config?.modLogChannelId]], {
-            components: [card(COLOR.ok, '🔓 Ban sementara selesai', [`**Member:** <@${b.userId}>`], `Otomatis • <t:${unix(now)}:f>`)],
-            flags: V2, allowedMentions: NO_PINGS,
-          });
+          await notifyStaff(guild, settings, card(COLOR.ok, '🔓 Temporary ban selesai — member di-unban', [`**Member:** <@${b.userId}>`], `Otomatis • <t:${unix(now)}:f>`));
         } catch (e) {
           if (e.code !== 10026) { // 10026 = sudah tidak di-ban → anggap selesai
             console.error(`Gagal unban ${b.userId}:`, e.message);
-            await postToChannels(guild, [['unban manual', g.config?.manualUnbanChannelId || g.config?.modLogChannelId]], {
-              components: [card(COLOR.danger, '⚠️ Perlu unban manual', [
-                `**Member:** <@${b.userId}>`,
-                `Ban sementara sudah selesai, tapi unban otomatis gagal: ${e.message}`,
-                'Silakan unban manual lewat Server Settings → Bans.',
-              ], `<t:${unix(now)}:f>`)],
-              flags: V2, allowedMentions: NO_PINGS,
-            });
+            await notifyStaff(guild, settings, card(COLOR.danger, '⚠️ Perlu unban manual', [
+              `**Member:** <@${b.userId}>`,
+              `Temporary ban sudah selesai, tapi unban otomatis gagal: ${e.message}`,
+              'Silakan unban manual lewat Server Settings → Bans.',
+            ], `<t:${unix(now)}:f>`));
           }
         }
         g.tempBans = g.tempBans.filter((x) => x !== b);
@@ -784,12 +808,13 @@ globalThis.SIM?.registerSettings?.({
         { key: 'unit', label: 'Satuan durasi', type: 'select', options: [{ value: 'minutes', label: 'menit' }, { value: 'hours', label: 'jam' }, { value: 'days', label: 'hari' }], enabledWhen: { col: 'action', in: ['timeout', 'tempban'] } },
       ],
       newRow: { warns: 1, action: 'timeout', duration: 10, unit: 'minutes' },
+      maxItems: MAX_STAGES,
     },
-    { key: 'autoActions', label: 'Aktifkan hukuman otomatis dari eskalasi (mati secara default)', type: 'boolean' },
-    { key: 'allowBan', label: 'Izinkan ban permanen otomatis dari eskalasi (mati secara default)', type: 'boolean' },
-    { key: 'allowKick', label: 'Izinkan kick otomatis dari eskalasi (mati secara default)', type: 'boolean' },
-    { key: 'allowTempban', label: 'Izinkan ban sementara otomatis (mati secara default)', type: 'boolean' },
-    { key: 'manualUnbanChannelId', label: 'Channel staff untuk ban sementara yang perlu unban manual', type: 'channel' },
+    { key: 'autoActions', label: 'Aktifkan hukuman otomatis dari eskalasi', type: 'boolean' },
+    { key: 'allowBan', label: 'Izinkan ban permanen otomatis dari eskalasi', type: 'boolean' },
+    { key: 'allowKick', label: 'Izinkan kick otomatis dari eskalasi', type: 'boolean' },
+    { key: 'allowTempban', label: 'Izinkan temporary ban otomatis', type: 'boolean' },
+    { key: 'staffChannelId', label: 'Channel staff untuk hasil temporary ban & unban (kosong = mod-log)', type: 'channel' },
   ],
   get: () => settingsToFile(settings),
   set(values) {

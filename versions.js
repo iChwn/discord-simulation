@@ -5,6 +5,20 @@
    ===================================================================== */
 window.SIM_VERSIONS = [
   {
+    version: '1.7',
+    date: '2026-11-22',
+    title: 'Disamakan dengan modul warn MEE6',
+    changes: [
+      { type: 'ubah', text: 'Nilai awal eskalasi 10 tahap (1 warn → timeout 5 menit … 9 → kick, 10 → temporary ban 30 hari) dengan semua sakelar hukuman nyala.' },
+      { type: 'ubah', text: '/mod warning-clear dan tombol 🗑 Hapus sekarang menghapus warn secara permanen (log lama di channel tetap ada).' },
+      { type: 'baru', text: 'Kartu mod-log & channel warn mencantumkan status DM kalau DM ke member gagal.' },
+      { type: 'baru', text: 'Channel staff menerima pemberitahuan temporary ban, unban otomatis, dan unban yang gagal (kosong = mod-log).' },
+      { type: 'baru', text: 'Batas maksimal 15 tahap eskalasi.' },
+      { type: 'fix', text: 'settings.json yang rusak/tidak valid sekarang jatuh ke pengaturan aman (hukuman otomatis mati).' },
+      { type: 'fix', text: 'Penyapu unban otomatis tidak lagi bergantung pada command yang sudah dijalankan sejak bot nyala.' },
+    ],
+  },
+  {
     version: '1.6',
     date: '2026-11-22',
     title: 'Eskalasi pakai masa berlaku warn',

@@ -24,8 +24,8 @@ Setelah edit `bot.js`, simpan → klik **↻ Restart bot**. Pesan di-reset, tapi
 ### Pengaturan di simulator — tombol **⚙ Test settings**
 Di bawah nama server ada tombol **⚙ Test settings**. Isinya semua pengaturan modul warn dalam satu panel:
 role staff (bisa lebih dari satu), channel mod-log, channel log warn, masa berlaku, tabel tahap eskalasi
-(jumlah warn, hukuman, durasi + satuan), sakelar hukuman otomatis + izin ban permanen/kick/ban sementara,
-dan channel untuk ban sementara yang perlu unban manual. Klik **Simpan** → langsung dipakai bot tanpa restart.
+(maks 15 tahap: jumlah warn, hukuman, durasi + satuan), sakelar hukuman otomatis + izin ban permanen/kick/temporary ban,
+dan channel staff untuk hasil temporary ban & unban. Klik **Simpan** → langsung dipakai bot tanpa restart.
 
 Panel ini didaftarkan dari `bot.js` lewat `globalThis.SIM?.registerSettings?.(...)` dan menyimpan ke file
 `settings.json`. Di bot asli baris itu otomatis diabaikan (tidak ada `SIM`).
@@ -39,23 +39,32 @@ nyalakan Developer Mode di Discord), lalu restart bot. Contoh:
   "staffRoleIds": ["123456789012345678"],
   "modLogChannelId": "234567890123456789",
   "warnChannelId": "345678901234567890",
-  "manualUnbanChannelId": null,
+  "staffChannelId": null,
   "expiryDays": 30,
-  "autoActions": false,
-  "allowBan": false,
-  "allowKick": false,
-  "allowTempban": false,
+  "autoActions": true,
+  "allowBan": true,
+  "allowKick": true,
+  "allowTempban": true,
   "escalation": [
-    { "warns": 3, "action": "timeout", "duration": 1, "unit": "hours" },
+    { "warns": 1, "action": "timeout", "duration": 5, "unit": "minutes" },
+    { "warns": 2, "action": "timeout", "duration": 10, "unit": "minutes" },
+    { "warns": 3, "action": "timeout", "duration": 30, "unit": "minutes" },
+    { "warns": 4, "action": "timeout", "duration": 2, "unit": "hours" },
     { "warns": 5, "action": "timeout", "duration": 1, "unit": "days" },
-    { "warns": 7, "action": "tempban", "duration": 7, "unit": "days" }
+    { "warns": 6, "action": "timeout", "duration": 3, "unit": "days" },
+    { "warns": 7, "action": "timeout", "duration": 5, "unit": "days" },
+    { "warns": 8, "action": "timeout", "duration": 7, "unit": "days" },
+    { "warns": 9, "action": "kick" },
+    { "warns": 10, "action": "tempban", "duration": 30, "unit": "days" }
   ]
 }
 ```
-`action`: `none`, `timeout`, `kick`, `tempban`, `ban`. `unit`: `minutes`, `hours`, `days`.
-Kalau isinya tidak valid, bot menulis alasannya di log dan memakai pengaturan default (semua sakelar mati).
+`action`: `none`, `timeout`, `kick`, `tempban`, `ban`. `unit`: `minutes`, `hours`, `days`. Maksimal 15 tahap.
+`staffChannelId` menerima pemberitahuan temporary ban, unban otomatis, dan unban yang gagal (kosong = mod-log).
+Kalau isinya tidak valid, bot menulis alasannya di log dan memakai pengaturan **aman** (semua hukuman otomatis mati).
 
-Eskalasi default: ≥3 warn aktif → timeout 1 jam, ≥5 → timeout 1 hari, ≥7 → ban sementara 7 hari.
+Nilai awal mengikuti aturan server (sama seperti di atas): 1 warn → timeout 5 menit … 8 → timeout 7 hari,
+9 → kick, 10 → temporary ban 30 hari, dengan semua sakelar **nyala**. Matikan sakelarnya kalau mau warn tanpa hukuman.
 Jumlah warn dihitung dari warn yang masih aktif, sesuai **masa berlaku warn**.
 Kalau beberapa tahap terpenuhi, yang dipakai tahap dengan jumlah warn tertinggi. Timeout cukup pakai sakelar utama;
 kick, ban sementara, dan ban permanen butuh sakelar utama **dan** izinnya masing-masing. Kalau belum diizinkan,
@@ -63,18 +72,18 @@ kartu warn cuma menulis tindakan yang *akan* dijalankan.
 
 ### Command staff
 - `/mod warn member: reason:` → kartu Components V2 ke #mod-log dan channel warn (member, moderator, alasan,
-  jumlah warn aktif, tindakan) + DM ke member. Kalau DM gagal, warn & pengumuman tetap jalan.
+  jumlah warn aktif, tindakan & hasilnya, status DM kalau gagal) + DM ke member. Kalau DM gagal, warn & pengumuman tetap jalan.
 - `/mod warning-list` → panel publik, 10 member per halaman, tombol **Sebelumnya/Berikutnya** + **Lihat detail**
   per member. Semua tombol cuma bisa dipakai staff; detail dikirim privat. Panel kedaluwarsa 15 menit setelah terakhir dipakai.
 - `/mod warning-clear member:` → hapus warn aktif + coba cabut timeout (kalau tidak sedang timeout, staff dikasih tahu).
-  Warn-nya tidak benar-benar dihapus dari data, cuma ditandai "dihapus" supaya tetap ada di riwayat.
+  Warn aktif dihapus **permanen** dari data; pesan pengumuman/log lama di channel tidak ikut dihapus.
 - `/mod warning-detail member:` → warn aktif satu member (privat ke staff), 10 per halaman. Tiap warn punya tombol
-  **🗑 Hapus** → konfirmasi **Ya, hapus / Batal** → cuma warn itu yang dibatalkan, dicatat di mod-log & riwayat.
-- `/mod warning-history member:` → riwayat **all time** semua warn member (privat ke staff), terbaru dulu,
-  10 per halaman. Tiap warn diberi status 🟢 aktif / ⚪ kedaluwarsa / 🧹 dihapus (oleh siapa, kapan).
+  **🗑 Hapus** → konfirmasi **Ya, hapus / Batal** → cuma warn itu yang dihapus permanen, dicatat di mod-log.
+- `/mod warning-history member:` → riwayat warn member (privat ke staff), terbaru dulu, 10 per halaman.
+  Tiap warn diberi status 🟢 aktif / ⚪ kedaluwarsa. Warn yang sudah dihapus staff tidak muncul lagi.
 
 Warn kedaluwarsa tidak dihitung di mana pun (eskalasi, daftar, detail, penghapusan), tapi tetap disimpan
-selamanya untuk riwayat. Ban sementara di-unban otomatis (dicek tiap menit, juga saat bot baru nyala).
+untuk riwayat. Temporary ban di-unban otomatis (dicek tiap menit, juga saat bot baru nyala).
 
 ### Cara ngetes manual di simulator
 1. Klik **⚙ Test settings** → tambah role @Staff, pilih #mod-log dan #warnings → Simpan.

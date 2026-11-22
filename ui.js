@@ -663,10 +663,10 @@
             ? `<select class="sm-in" ${attrs}>${c.options.map((o) => opt(o.value, o.label, row[c.key])).join('')}</select>`
             : `<input class="sm-in num" type="number" ${attrs} value="${esc(val)}" ${c.min != null ? `min="${c.min}"` : ''} ${c.max != null ? `max="${c.max}"` : ''}>`}</td>`;
         }).join('')}<td class="x"><button data-act="rm-item" ${k} data-i="${i}" title="Hapus tahap">×</button></td></tr>`).join('');
-        return `<div class="sm-block"><div class="sm-bhead"><span class="sm-label">${esc(fd.label)}</span>${countBadge(list.length)}</div>
+        return `<div class="sm-block"><div class="sm-bhead"><span class="sm-label">${esc(fd.label)}</span>${countBadge(list.length)}${fd.maxItems ? `<span class="count">maks ${fd.maxItems}</span>` : ''}</div>
           <div class="sm-scroll"><table class="sm-table"><thead><tr><th class="n">#</th>${fd.columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}<th class="x"></th></tr></thead>
           <tbody>${rows || `<tr><td colspan="${fd.columns.length + 2}" class="empty">Belum ada tahap.</td></tr>`}</tbody></table></div>
-          <button class="sm-btn small" data-act="add-row" ${k}>＋ Tambah tahap</button></div>`;
+          ${fd.maxItems && list.length >= fd.maxItems ? `<span class="sm-hint">Maksimal ${fd.maxItems} tahap.</span>` : `<button class="sm-btn small" data-act="add-row" ${k}>＋ Tambah tahap</button>`}</div>`;
       }
       default:
         return line(`<input class="sm-in" ${k} value="${esc(v ?? '')}">`);
