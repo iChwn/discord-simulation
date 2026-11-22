@@ -1,0 +1,8 @@
+# dependensi & rahasia (bot asli)
+node_modules/
+.env
+
+# data yang dibuat bot saat jalan
+data/
+settings.json
+*.tmp

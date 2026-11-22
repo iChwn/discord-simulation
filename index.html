@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Discord Bot Simulator</title>
+<link rel="stylesheet" href="sim.css">
+</head>
+<body>
+<div id="app">
+  <aside id="left">
+    <div class="server-name">Test Server <span class="badge-sim">SIMULATOR</span></div>
+    <div class="ch" id="open-settings"><span class="ico">⚙</span>Test settings</div>
+    <div class="section-label">TEXT CHANNELS</div>
+    <div id="channels"></div>
+    <div class="section-label">VOICE CHANNELS</div>
+    <div class="ch voice"><span class="ico">🔊</span>Lounge</div>
+    <div class="section-label">PESAN LANGSUNG</div>
+    <div id="dm-channel"></div>
+    <div class="spacer"></div>
+    <div class="section-label">TESTING SEBAGAI</div>
+    <div id="me"></div>
+    <div class="section-label">ROLE <span class="muted">(klik buat pasang/lepas)</span></div>
+    <div id="roles"></div>
+  </aside>
+
+  <main id="main">
+    <header id="topbar">
+      <div class="ch-title"><span class="hash">#</span><span id="ch-name"></span><span id="ch-topic"></span></div>
+      <div class="tools">
+        <span id="clock" title="Waktu virtual bot (dipakai setTimeout/setInterval/Date)"></span>
+        <button id="t-min" title="Majukan waktu virtual 1 menit">⏩ +1 menit</button>
+        <button id="t-hour" title="Majukan waktu virtual 1 jam">⏩ +1 jam</button>
+        <button id="t-console">🖥 Konsol <span id="err-badge"></span></button>
+        <button id="t-restart" title="Muat ulang bot.js (pesan direset, data bot tetap tersimpan)">↻ Restart bot</button>
+        <button id="t-reset" title="Hapus data yang disimpan bot (fs tiruan) + reset waktu virtual">🗑 Reset data</button>
+      </div>
+    </header>
+
+    <div id="messages"></div>
+
+    <div id="console" class="hidden">
+      <div class="console-head"><span>Konsol bot <span class="muted">— console.log() & error dari bot.js</span></span><button id="console-clear">Bersihkan</button></div>
+      <div id="console-lines"></div>
+    </div>
+
+    <div id="quick"></div>
+    <div id="composer-wrap">
+      <div id="popup" class="hidden"></div>
+      <div id="hint" class="hidden"></div>
+      <div id="composer"><span class="plus">＋</span><textarea id="input" rows="1" spellcheck="false"></textarea><div id="slash-bar" class="hidden"></div></div>
+      <div id="typing"></div>
+    </div>
+  </main>
+
+  <aside id="right"><div id="members"></div></aside>
+</div>
+<div id="toasts"></div>
+<div id="settings-modal" class="hidden">
+  <div class="sm-box" role="dialog" aria-labelledby="sm-title">
+    <div class="sm-head"><span id="sm-title">Test settings</span><button class="sm-x" data-sm="close" title="Tutup">×</button></div>
+    <div class="sm-body" id="sm-body"></div>
+    <div class="sm-foot"><span id="sm-err"></span><button class="sm-btn" data-sm="close">Batal</button><button class="sm-btn primary" data-sm="save">Simpan</button></div>
+  </div>
+</div>
+
+<script src="discord-mock.js"></script>
+<script src="bot.js"></script>
+<script src="ui.js"></script>
+<script src="tests.js"></script>
+</body>
+</html>
