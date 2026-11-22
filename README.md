@@ -65,9 +65,12 @@ kartu warn cuma menulis tindakan yang *akan* dijalankan.
 - `/mod warning-list` → panel publik, 10 member per halaman, tombol **Sebelumnya/Berikutnya** + **Lihat detail**
   per member. Semua tombol cuma bisa dipakai staff; detail dikirim privat. Panel kedaluwarsa 15 menit setelah terakhir dipakai.
 - `/mod warning-clear member:` → hapus warn aktif + coba cabut timeout (kalau tidak sedang timeout, staff dikasih tahu).
+  Warn-nya tidak benar-benar dihapus dari data, cuma ditandai "dihapus" supaya tetap ada di riwayat.
+- `/mod warning-history member:` → riwayat **all time** semua warn member (privat ke staff), terbaru dulu,
+  10 per halaman. Tiap warn diberi status 🟢 aktif / ⚪ kedaluwarsa / 🧹 dihapus (oleh siapa, kapan).
 
-Warn kedaluwarsa tidak dihitung di mana pun (eskalasi, daftar, detail, penghapusan). Warn yang lewat 365 hari
-dihapus permanen. Ban sementara di-unban otomatis (dicek tiap menit, juga saat bot baru nyala).
+Warn kedaluwarsa tidak dihitung di mana pun (eskalasi, daftar, detail, penghapusan), tapi tetap disimpan
+selamanya untuk riwayat. Ban sementara di-unban otomatis (dicek tiap menit, juga saat bot baru nyala).
 
 ### Cara ngetes manual di simulator
 1. Klik **⚙ Test settings** → tambah role @Staff, pilih #mod-log dan #warnings → Simpan.

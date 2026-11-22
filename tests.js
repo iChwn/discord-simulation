@@ -39,7 +39,9 @@
   }
   const g = () => JSON.parse(localStorage.getItem('simfs-test:/bot/data/moderation.json') || '{}').guilds?.[S.GUILD_ID];
   const cfgFile = () => JSON.parse(localStorage.getItem('simfs-test:/bot/settings.json') || 'null');
-  const warnsOf = (id) => (g()?.warns || []).filter((w) => w.userId === id);
+  // warn yang belum di-clear (yang di-clear tetap ada di data sebagai riwayat)
+  const warnsOf = (id) => (g()?.warns || []).filter((w) => w.userId === id && !w.clearedAt);
+  const allWarnsOf = (id) => (g()?.warns || []).filter((w) => w.userId === id);
   // ubah pengaturan lewat panel Test settings (sama seperti klik Simpan)
   const setCfg = (patch) => { const e = S.settingsDef.set({ ...S.settingsDef.get(), ...patch }); if (e) throw new Error(e); };
   const setStages = (fn) => { const v = S.settingsDef.get(); v.escalation = fn(v.escalation); return S.settingsDef.set(v); };
@@ -170,7 +172,7 @@
     for (const u of S.users.filter((x) => !x.bot && !x.owner && x.id !== ID.alex && !warnsOf(x.id).length)) {
       await slash(`/mod warn member: @${u.username} reason: massal`, ID.kamu);
     }
-    const warnedCount = new Set((g().warns).map((w) => w.userId)).size;
+    const warnedCount = new Set(g().warns.filter((w) => !w.clearedAt).map((w) => w.userId)).size;
     r = await slash('/mod warning-list', ID.alex);
     let panel = r.recs.find((x) => x.v2 && /Member dengan warn aktif/.test(text(x)));
     ok('warning-list publik (bukan ephemeral) berbentuk Components V2', panel && !panel.ephemeralFor && panel.v2);
@@ -231,6 +233,34 @@
     const p3 = r.recs.find((x) => /Member dengan warn aktif/.test(text(x)));
     out = await click(p3, (b) => b.label === 'Lihat detail', ID.alex);
     ok('Detail hanya menampilkan warn aktif', out.some((x) => /\*\*1\*\* warn aktif/.test(text(x)) && /baru/.test(text(x)) && !/flood/.test(text(x))));
+
+    // ---------- /mod warning-history (all time)
+    ok('warning-clear menyimpan warn sebagai riwayat (tidak dihapus)', allWarnsOf(ID.riley).length === 4 && allWarnsOf(ID.riley).every((w) => w.clearedAt && w.clearedBy === ID.alex));
+    r = await slash('/mod warning-history member: @Riley', ID.riley);
+    ok('Non-staff tidak bisa /mod warning-history', r.recs.every((x) => x.ephemeralFor === ID.riley) && r.recs.some((x) => /Hanya staff/.test(text(x))));
+    r = await slash('/mod warning-history member: @Riley', ID.alex);
+    let hist = r.recs.find((x) => /Riwayat warn/.test(text(x)));
+    ok('Riwayat dikirim privat ke staff (V2)', hist && hist.v2 && hist.ephemeralFor === ID.alex);
+    ok('Riwayat memuat warn yang sudah di-clear + siapa yang menghapus', /total \*\*4\*\* warn/.test(text(hist)) && /dihapus 4/.test(text(hist)) && /Dihapus oleh <@101>/.test(text(hist)) && /spam link/.test(text(hist)));
+    r = await slash('/mod warning-history member: @Budi', ID.alex);
+    hist = r.recs.find((x) => /Riwayat warn/.test(text(x)));
+    ok('Riwayat memuat warn kedaluwarsa dan aktif sekaligus', /flood lagi/.test(text(hist)) && /baru/.test(text(hist)) && /Kedaluwarsa/.test(text(hist)) && /🟢 aktif 1/.test(text(hist)));
+    r = await slash('/mod warning-history member: @Gita', ID.alex);
+    hist = r.recs.find((x) => /Riwayat warn/.test(text(x)));
+    ok('Riwayat member tanpa warn baru → ada catatan massal saja', hist && /total \*\*1\*\* warn/.test(text(hist)));
+    r = await slash('/mod warning-history member: @Sam', ID.alex);
+    ok('Warn yang di-clear tidak dihitung aktif lagi', /🟢 aktif 0/.test(text(r.recs.find((x) => /Riwayat warn/.test(text(x))))));
+
+    setCfg({ autoActions: false, expiryDays: 30 });
+    for (let k = 1; k <= 12; k++) await slash(`/mod warn member: @Joko reason: catatan ${k}`, ID.alex);
+    r = await slash('/mod warning-history member: @Joko', ID.alex);
+    hist = r.recs.find((x) => /Riwayat warn/.test(text(x)));
+    const hb = (label) => S.buttonsOf(hist).find((b) => b.label === label);
+    ok('Riwayat > 10 warn dibagi halaman (terbaru dulu)', /total \*\*13\*\* warn/.test(text(hist)) && /Halaman 1\/2/.test(text(hist)) && /catatan 12/.test(text(hist)) && !/massal/.test(text(hist)) && hb('Sebelumnya').disabled);
+    await click(hist, 'Berikutnya', ID.alex);
+    ok('Berikutnya → halaman 2 berisi warn terlama', /Halaman 2\/2/.test(text(hist)) && /massal/.test(text(hist)) && /\*\*#1\*\*/.test(text(hist)) && hb('Berikutnya').disabled);
+    await click(hist, 'Sebelumnya', ID.alex);
+    ok('Sebelumnya → kembali ke halaman 1', /Halaman 1\/2/.test(text(hist)));
 
     // ---------- tidak ada error di konsol
     const errs = S.logs.filter((l) => l.level === 'error' && !/FAIL/.test(l.text));

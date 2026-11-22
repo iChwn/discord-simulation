@@ -3,7 +3,7 @@
 //  Di simulator: simpan file ini, lalu klik "↻ Restart bot".
 //  Di bot asli: jalankan `node bot.js` (lihat README.md).
 //
-//  Command (staff): /mod warn | /mod warning-list | /mod warning-clear
+//  Command (staff): /mod warn | /mod warning-list | /mod warning-clear | /mod warning-history
 //  Pengaturan: file settings.json (di simulator: tombol ⚙ Test settings)
 // =====================================================================
 require('dotenv').config();
@@ -253,13 +253,15 @@ async function postToChannels(guild, targets, payload) {
 const expiresAt = (w, cfg) => w.createdAt + cfg.expiryDays * DAY;
 const isActive = (w, cfg, now = Date.now()) => now < expiresAt(w, cfg);
 
+// Warn tidak pernah dihapus dari data: yang di-clear ditandai clearedAt (untuk riwayat all time)
+const isLive = (w, cfg) => !w.clearedAt && isActive(w, cfg);
 function activeWarns(g, userId) {
-  return g.warns.filter((w) => w.userId === userId && isActive(w, g.config)).sort((a, b) => a.createdAt - b.createdAt);
+  return g.warns.filter((w) => w.userId === userId && isLive(w, g.config)).sort((a, b) => a.createdAt - b.createdAt);
 }
 function warnedMembers(g) {
   const map = new Map();
   for (const w of g.warns) {
-    if (!isActive(w, g.config)) continue;
+    if (!isLive(w, g.config)) continue;
     const e = map.get(w.userId) ?? { userId: w.userId, count: 0, last: 0 };
     e.count++;
     e.last = Math.max(e.last, w.createdAt);
@@ -337,7 +339,9 @@ const commands = [
       .addStringOption((o) => o.setName('reason').setDescription('Alasan warn').setRequired(true).setMaxLength(500)))
     .addSubcommand((s) => s.setName('warning-list').setDescription('Daftar member dengan warn aktif'))
     .addSubcommand((s) => s.setName('warning-clear').setDescription('Hapus semua warn aktif member & cabut timeout')
-      .addUserOption((o) => o.setName('member').setDescription('Member yang warn-nya dihapus').setRequired(true))),
+      .addUserOption((o) => o.setName('member').setDescription('Member yang warn-nya dihapus').setRequired(true)))
+    .addSubcommand((s) => s.setName('warning-history').setDescription('Riwayat semua warn member (aktif, kedaluwarsa, dihapus)')
+      .addUserOption((o) => o.setName('member').setDescription('Member yang riwayatnya dilihat').setRequired(true))),
 ];
 
 // ------------------------------------------------------------------ /mod warn
@@ -486,8 +490,10 @@ async function onListButton(i) {
 // ------------------------------------------------------------------ /mod warning-clear
 async function cmdClear(i, g) {
   const user = i.options.getUser('member', true);
-  const removed = activeWarns(g, user.id).length;
-  g.warns = g.warns.filter((w) => !(w.userId === user.id && isActive(w, g.config)));
+  const live = activeWarns(g, user.id);
+  const removed = live.length;
+  const now = Date.now();
+  for (const w of live) { w.clearedAt = now; w.clearedBy = i.user.id; } // tetap tersimpan di riwayat
   store.save();
 
   let timeoutNote;
@@ -514,6 +520,72 @@ async function cmdClear(i, g) {
   });
 }
 
+// ------------------------------------------------------------------ /mod warning-history
+const HISTORY_PAGE = 10;
+function warnStatus(w, cfg) {
+  if (w.clearedAt) return `🧹 Dihapus oleh <@${w.clearedBy}> <t:${unix(w.clearedAt)}:R>`;
+  if (!isActive(w, cfg)) return `⚪ Kedaluwarsa <t:${unix(expiresAt(w, cfg))}:R>`;
+  return `🟢 Aktif — kedaluwarsa <t:${unix(expiresAt(w, cfg))}:R>`;
+}
+function historyPanel(g, sid, userId, page) {
+  const cfg = g.config;
+  const all = g.warns.filter((w) => w.userId === userId).sort((a, b) => b.createdAt - a.createdAt); // terbaru dulu
+  const active = all.filter((w) => isLive(w, cfg)).length;
+  const cleared = all.filter((w) => w.clearedAt).length;
+  const pages = Math.max(1, Math.ceil(all.length / HISTORY_PAGE));
+  page = Math.min(Math.max(0, page), pages - 1);
+
+  const c = new ContainerBuilder()
+    .setAccentColor(COLOR.info)
+    .addTextDisplayComponents((t) => t.setContent([
+      `## 📜 Riwayat warn`,
+      `<@${userId}> • total **${all.length}** warn`,
+      `-# 🟢 aktif ${active} • ⚪ kedaluwarsa ${all.length - active - cleared} • 🧹 dihapus ${cleared}`,
+    ].join('\n')))
+    .addSeparatorComponents((s) => s.setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+  if (!all.length) c.addTextDisplayComponents((t) => t.setContent('✨ Member ini belum pernah diberi warn.'));
+  all.slice(page * HISTORY_PAGE, (page + 1) * HISTORY_PAGE).forEach((w) => {
+    c.addTextDisplayComponents((t) => t.setContent([
+      `**#${all.length - all.indexOf(w)}** • <t:${unix(w.createdAt)}:f>`,
+      `**Alasan:** ${clip(w.reason, 200)}`,
+      `**Moderator:** <@${w.moderatorId}>`,
+      `-# ${warnStatus(w, cfg)}`,
+    ].join('\n')));
+  });
+  if (pages > 1) {
+    c.addSeparatorComponents((s) => s.setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+      .addTextDisplayComponents((t) => t.setContent(`-# Halaman ${page + 1}/${pages}`))
+      .addActionRowComponents((row) => row.setComponents(
+        new ButtonBuilder().setCustomId(`wh:${sid}:prev`).setLabel('Sebelumnya').setEmoji('◀️').setStyle(ButtonStyle.Primary).setDisabled(page === 0),
+        new ButtonBuilder().setCustomId(`wh:${sid}:next`).setLabel('Berikutnya').setEmoji('▶️').setStyle(ButtonStyle.Primary).setDisabled(page >= pages - 1),
+      ));
+  }
+  return { components: [c], page };
+}
+
+async function cmdHistory(i, g) {
+  const user = i.options.getUser('member', true);
+  const sid = newId();
+  const { components, page } = historyPanel(g, sid, user.id, 0);
+  store.setTemp(`history:${sid}`, { userId: user.id, page }, PANEL_TTL);
+  await i.reply({ components, flags: PRIVATE_V2, allowedMentions: NO_PINGS }); // privat untuk staff
+}
+
+async function onHistoryButton(i) {
+  const g = store.guild(i.guildId);
+  if (await denyIfNotStaff(i, g.config)) return;
+  const [, sid, action] = i.customId.split(':');
+  const session = store.getTemp(`history:${sid}`);
+  if (!session) {
+    await i.update({ components: [card(COLOR.danger, '⌛ Panel kedaluwarsa', ['Jalankan `/mod warning-history` lagi.'])], flags: V2 });
+    return;
+  }
+  const { components, page } = historyPanel(g, sid, session.userId, session.page + (action === 'next' ? 1 : -1));
+  await i.update({ components, flags: V2, allowedMentions: NO_PINGS });
+  session.page = page;
+  store.setTemp(`history:${sid}`, session, PANEL_TTL);
+}
+
 // ------------------------------------------------------------------ penyapu berkala
 let sweeping = false;
 async function sweep() {
@@ -523,11 +595,7 @@ async function sweep() {
     const now = Date.now();
     let changed = store.sweepTemp() > 0;
     for (const [guildId, g] of Object.entries(store.data.guilds)) {
-      // warn lewat 365 hari tidak mungkin aktif lagi → hapus permanen
-      const before = g.warns.length;
-      g.warns = g.warns.filter((w) => now < w.createdAt + MAX_EXPIRY_DAYS * DAY);
-      if (g.warns.length !== before) changed = true;
-
+      // warn lama sengaja TIDAK dihapus → tetap muncul di /mod warning-history
       const due = (g.tempBans ?? []).filter((b) => b.unbanAt <= now);
       const guild = client.guilds.cache.get(guildId);
       if (!due.length || !guild) continue;
@@ -576,6 +644,7 @@ client.on(Events.InteractionCreate, async (i) => {
   if (!i.inGuild()) return;
   try {
     if (i.isButton() && i.customId.startsWith('wl:')) return await onListButton(i);
+    if (i.isButton() && i.customId.startsWith('wh:')) return await onHistoryButton(i);
     if (!i.isChatInputCommand()) return;
 
     if (i.commandName === 'mod') {
@@ -585,6 +654,7 @@ client.on(Events.InteractionCreate, async (i) => {
       if (sub === 'warn') return await cmdWarn(i, g);
       if (sub === 'warning-list') return await cmdList(i, g);
       if (sub === 'warning-clear') return await cmdClear(i, g);
+      if (sub === 'warning-history') return await cmdHistory(i, g);
     }
   } catch (e) {
     console.error('Error saat menangani interaksi:', e);
