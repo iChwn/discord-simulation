@@ -290,6 +290,22 @@
     await click(det2, 'Berikutnya', ID.alex);
     ok('Navigasi halaman di warning-detail', /Halaman 2\/2/.test(text(det2)) && delBtns().length === 2);
 
+    // ---------- regresi: tahap Kick diganti Timeout di panel Test settings
+    setStages(() => [{ warns: 1, periodDays: 30, action: 'kick' }]);
+    document.getElementById('open-settings').click();
+    await wait(50);
+    const smBody = document.getElementById('sm-body');
+    const act = smBody.querySelector('select[data-col="action"][data-row="0"]');
+    act.value = 'timeout'; act.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(50);
+    const dur = smBody.querySelector('input[data-col="duration"][data-row="0"]');
+    dur.value = '3'; dur.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('[data-sm="save"]').click();
+    await wait(50);
+    const st = cfgFile().escalation[0];
+    ok('Panel: Kick → Timeout 3 menit tersimpan (satuan ikut pilihan yang tampil)', document.getElementById('sm-err').textContent === '' && st.action === 'timeout' && st.duration === 3 && st.unit === 'minutes');
+    ok('settings.json: satuan durasi salah → pesan jelas', /satuan durasi/.test(setStages(() => [{ warns: 1, periodDays: 30, action: 'timeout', duration: 3, unit: 'menit' }]) || ''));
+
     // ---------- tidak ada error di konsol
     const errs = S.logs.filter((l) => l.level === 'error' && !/FAIL/.test(l.text));
     ok('Tidak ada error dari bot', errs.length === 0, errs.map((e) => e.text).join('\n'));

@@ -655,6 +655,8 @@
         const list = v || [];
         const rows = list.map((row, i) => `<tr><td class="n">${i + 1}</td>${fd.columns.map((c) => {
           const dis = cellEnabled(c, row) ? '' : 'disabled';
+          // dropdown tanpa nilai yang cocok → pakai pilihan pertama (yang memang terlihat di layar)
+          if (c.type === 'select' && !c.options.some((o) => String(o.value) === String(row[c.key]))) row[c.key] = c.options[0].value;
           const attrs = `${k} data-row="${i}" data-col="${c.key}" ${dis}`;
           const val = dis ? '' : row[c.key];
           return `<td>${c.type === 'select'

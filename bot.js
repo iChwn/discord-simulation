@@ -131,7 +131,10 @@ function settingsFromFile(raw) {
   const escalation = [];
   for (const [n, r] of v.escalation.entries()) {
     const stage = { warns: r.warns, periodDays: r.periodDays, action: r.action };
-    if (needsDuration(r.action)) stage.durationMs = (Number(r.duration) || 0) * (UNIT_MS[r.unit] || 0);
+    if (needsDuration(r.action)) {
+      if (!UNIT_MS[r.unit]) return { error: `Tahap ${n + 1}: satuan durasi harus minutes, hours, atau days.` };
+      stage.durationMs = (Number(r.duration) || 0) * UNIT_MS[r.unit];
+    }
     const err = stageError(stage);
     if (err) return { error: `Tahap ${n + 1}: ${err}` };
     if (escalation.some((s) => s.warns === stage.warns)) return { error: `Tahap ${n + 1}: jumlah warn ${stage.warns} dipakai dua kali.` };

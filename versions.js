@@ -5,6 +5,15 @@
    ===================================================================== */
 window.SIM_VERSIONS = [
   {
+    version: '1.5.1',
+    date: '2026-11-22',
+    title: 'Perbaikan Test settings',
+    changes: [
+      { type: 'fix', text: 'Tahap eskalasi yang diganti dari Kick/Ban ke Timeout tidak lagi error "Timeout butuh durasi" — satuan durasi ikut pilihan yang tampil.' },
+      { type: 'fix', text: 'settings.json: satuan durasi yang salah sekarang diberi pesan jelas (minutes, hours, atau days).' },
+    ],
+  },
+  {
     version: '1.5',
     date: '2026-11-22',
     title: 'Lihat & hapus warn tertentu',
