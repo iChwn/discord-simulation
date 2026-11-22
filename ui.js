@@ -728,6 +728,23 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sm.box.classList.contains('hidden')) closeSettings(); });
   $('#open-settings').onclick = openSettings;
 
+  // --------------------------------------------------------------- Versi (versions.js)
+  const vm = { box: $('#versions-modal'), body: $('#vm-body') };
+  const VERSIONS = window.SIM_VERSIONS || [];
+  const TAG = { baru: 'Baru', ubah: 'Diubah', fix: 'Perbaikan' };
+  if (VERSIONS[0]) $('#ver-badge').textContent = 'v' + VERSIONS[0].version;
+  function openVersions() {
+    vm.body.innerHTML = VERSIONS.length
+      ? VERSIONS.map((v, i) => `<div class="ver ${i === 0 ? 'latest' : ''}">
+          <div class="ver-top"><span class="ver-num">v${esc(v.version)}</span><span class="ver-title">${esc(v.title)}</span>${i === 0 ? '<span class="ver-now">TERBARU</span>' : ''}<span class="ver-date">${new Date(v.date + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span></div>
+          <ul>${v.changes.map((c) => `<li><span class="tag ${esc(c.type)}">${esc(TAG[c.type] || c.type)}</span><span>${md(c.text)}</span></li>`).join('')}</ul></div>`).join('')
+      : '<p class="sm-desc">Belum ada catatan versi. Isi file versions.js.</p>';
+    vm.box.classList.remove('hidden');
+  }
+  vm.box.addEventListener('click', (e) => { if (e.target === vm.box || e.target.closest('[data-vm="close"]')) vm.box.classList.add('hidden'); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') vm.box.classList.add('hidden'); });
+  $('#open-versions').onclick = openVersions;
+
   // --------------------------------------------------------------- start
   renderQuick();
   renderClock();

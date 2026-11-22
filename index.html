@@ -11,6 +11,7 @@
   <aside id="left">
     <div class="server-name">Test Server <span class="badge-sim">SIMULATOR</span></div>
     <div class="ch" id="open-settings"><span class="ico">⚙</span>Test settings</div>
+    <div class="ch" id="open-versions"><span class="ico">📜</span>Versi <span id="ver-badge" class="ver-badge"></span></div>
     <div class="section-label">TEXT CHANNELS</div>
     <div id="channels"></div>
     <div class="section-label">VOICE CHANNELS</div>
@@ -64,6 +65,14 @@
   </div>
 </div>
 
+<div id="versions-modal" class="sm-modal hidden">
+  <div class="sm-box" role="dialog" aria-labelledby="vm-title">
+    <div class="sm-head"><span id="vm-title">Versi</span><button class="sm-x" data-vm="close" title="Tutup">×</button></div>
+    <div class="sm-body" id="vm-body"></div>
+  </div>
+</div>
+
+<script src="versions.js"></script>
 <script src="discord-mock.js"></script>
 <script src="bot.js"></script>
 <script src="ui.js"></script>

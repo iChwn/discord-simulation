@@ -11,6 +11,7 @@ Tes otomatis: buka `index.html?test` → hasil PASS/FAIL muncul di 🖥 Konsol.
 |---|---|
 | `bot.js` | **Bot kamu.** Sekarang berisi modul moderasi warn. |
 | `settings.json` | Pengaturan bot (dibuat otomatis; di simulator disimpan di browser). |
+| `versions.js` | Catatan update per versi — tampil di tombol **📜 Versi** (entri baru ditaruh paling atas). |
 | `tests.js` | Tes otomatis modul warn (jalan hanya dengan `?test`). |
 | `discord-mock.js` | Tiruan discord.js + server palsu. Nggak perlu diubah. |
 | `ui.js`, `sim.css`, `index.html` | Tampilan ala Discord. Nggak perlu diubah. |
