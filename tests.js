@@ -262,6 +262,34 @@
     await click(hist, 'Sebelumnya', ID.alex);
     ok('Sebelumnya → kembali ke halaman 1', /Halaman 1\/2/.test(text(hist)));
 
+    // ---------- /mod warning-detail + hapus warn tertentu
+    r = await slash('/mod warning-detail member: @Joko', ID.riley);
+    ok('Non-staff tidak bisa /mod warning-detail', r.recs.every((x) => x.ephemeralFor === ID.riley) && r.recs.some((x) => /Hanya staff/.test(text(x))));
+    r = await slash('/mod warning-detail member: @Joko', ID.alex);
+    const det2 = r.recs.find((x) => /Detail warn/.test(text(x)));
+    const jokoActive = warnsOf('118').filter((w) => !w.clearedAt).length;
+    const delBtns = () => S.buttonsOf(det2).filter((b) => b.label === 'Hapus');
+    ok('warning-detail privat ke staff, V2, maks 10 warn per halaman', det2 && det2.v2 && det2.ephemeralFor === ID.alex && jokoActive === 13 && delBtns().length === 10 && /Halaman 1\/2/.test(text(det2)));
+    ok('Tiap warn punya waktu, alasan, moderator', /\*\*#13\*\*/.test(text(det2)) && /catatan 12/.test(text(det2)) && /Moderator:\*\* <@101>/.test(text(det2)));
+    const firstId = delBtns()[0].custom_id.split(':').pop();
+    out = await click(det2, (b) => b.custom_id.endsWith(':del:' + firstId), ID.riley);
+    ok('Non-staff tidak bisa klik Hapus', out.some((x) => /Hanya staff/.test(text(x))) && !S.buttonsOf(det2).some((b) => /Ya, hapus/.test(b.label || '')));
+    await click(det2, (b) => b.custom_id.endsWith(':del:' + firstId), ID.alex);
+    ok('Klik Hapus → minta konfirmasi dulu', S.buttonsOf(det2).some((b) => b.label === 'Ya, hapus warn #13') && S.buttonsOf(det2).some((b) => b.label === 'Batal') && warnsOf('118').length === 13);
+    await click(det2, 'Batal', ID.alex);
+    ok('Batal → warn tidak jadi dihapus', !S.buttonsOf(det2).some((b) => /Ya, hapus/.test(b.label || '')) && warnsOf('118').length === 13);
+    await click(det2, (b) => b.custom_id.endsWith(':del:' + firstId), ID.alex);
+    const n0 = S.records.length;
+    await click(det2, (b) => /Ya, hapus/.test(b.label || ''), ID.alex);
+    const gone = allWarnsOf('118').find((w) => w.id === firstId);
+    ok('Ya, hapus → cuma warn itu yang dihapus', gone.clearedAt && gone.clearedBy === ID.alex && warnsOf('118').length === 12);
+    ok('Panel ter-update (12 warn aktif + pesan sukses)', /\*\*12\*\* warn aktif/.test(text(det2)) && /Warn \*\*#13\*\*.*dihapus/.test(text(det2)) && !/Alasan:\*\* catatan 12/.test(text(det2)));
+    ok('Penghapusan tercatat di mod-log', S.records.slice(n0).some((x) => x.channelId === '302' && /Warn dihapus/.test(text(x)) && /catatan 12/.test(text(x))));
+    r = await slash('/mod warning-history member: @Joko', ID.alex);
+    ok('Warn yang dihapus tetap ada di riwayat', /Dihapus oleh <@101>/.test(text(r.recs.find((x) => /Riwayat warn/.test(text(x))))));
+    await click(det2, 'Berikutnya', ID.alex);
+    ok('Navigasi halaman di warning-detail', /Halaman 2\/2/.test(text(det2)) && delBtns().length === 2);
+
     // ---------- tidak ada error di konsol
     const errs = S.logs.filter((l) => l.level === 'error' && !/FAIL/.test(l.text));
     ok('Tidak ada error dari bot', errs.length === 0, errs.map((e) => e.text).join('\n'));

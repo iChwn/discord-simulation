@@ -5,6 +5,16 @@
    ===================================================================== */
 window.SIM_VERSIONS = [
   {
+    version: '1.5',
+    date: '2026-11-22',
+    title: 'Lihat & hapus warn tertentu',
+    changes: [
+      { type: 'baru', text: '/mod warning-detail member: warn aktif member (tampilan detail warn), privat ke staff, 10 per halaman.' },
+      { type: 'baru', text: 'Tombol 🗑 Hapus di tiap warn, dengan konfirmasi "Ya, hapus / Batal" — cuma warn itu yang dihapus.' },
+      { type: 'baru', text: 'Penghapusan dicatat di mod-log dan tetap muncul di /mod warning-history (🧹 Dihapus oleh …).' },
+    ],
+  },
+  {
     version: '1.4',
     date: '2026-11-22',
     title: 'Riwayat warn all time',

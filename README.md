@@ -67,6 +67,8 @@ kartu warn cuma menulis tindakan yang *akan* dijalankan.
   per member. Semua tombol cuma bisa dipakai staff; detail dikirim privat. Panel kedaluwarsa 15 menit setelah terakhir dipakai.
 - `/mod warning-clear member:` → hapus warn aktif + coba cabut timeout (kalau tidak sedang timeout, staff dikasih tahu).
   Warn-nya tidak benar-benar dihapus dari data, cuma ditandai "dihapus" supaya tetap ada di riwayat.
+- `/mod warning-detail member:` → warn aktif satu member (privat ke staff), 10 per halaman. Tiap warn punya tombol
+  **🗑 Hapus** → konfirmasi **Ya, hapus / Batal** → cuma warn itu yang dibatalkan, dicatat di mod-log & riwayat.
 - `/mod warning-history member:` → riwayat **all time** semua warn member (privat ke staff), terbaru dulu,
   10 per halaman. Tiap warn diberi status 🟢 aktif / ⚪ kedaluwarsa / 🧹 dihapus (oleh siapa, kapan).
 
