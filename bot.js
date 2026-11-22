@@ -49,9 +49,9 @@ const DEFAULT_SETTINGS = {
   allowKick: false,
   allowTempban: false,
   escalation: [                // action: none | timeout | kick | tempban | ban ; unit: minutes | hours | days
-    { warns: 3, periodDays: 30, action: 'timeout', duration: 1, unit: 'hours' },
-    { warns: 5, periodDays: 30, action: 'timeout', duration: 1, unit: 'days' },
-    { warns: 7, periodDays: 60, action: 'tempban', duration: 7, unit: 'days' },
+    { warns: 3, action: 'timeout', duration: 1, unit: 'hours' },
+    { warns: 5, action: 'timeout', duration: 1, unit: 'days' },
+    { warns: 7, action: 'tempban', duration: 7, unit: 'days' },
   ],
 };
 
@@ -130,7 +130,7 @@ function settingsFromFile(raw) {
   if (!Array.isArray(v.escalation)) return { error: 'escalation harus berupa daftar tahap.' };
   const escalation = [];
   for (const [n, r] of v.escalation.entries()) {
-    const stage = { warns: r.warns, periodDays: r.periodDays, action: r.action };
+    const stage = { warns: r.warns, action: r.action }; // periodDays (versi lama) diabaikan
     if (needsDuration(r.action)) {
       if (!UNIT_MS[r.unit]) return { error: `Tahap ${n + 1}: satuan durasi harus minutes, hours, atau days.` };
       stage.durationMs = (Number(r.duration) || 0) * UNIT_MS[r.unit];
@@ -212,7 +212,6 @@ function blockedReason(cfg, action) {
 const needsDuration = (action) => action === 'timeout' || action === 'tempban';
 function stageError(s) {
   if (!Number.isInteger(s.warns) || s.warns < 1 || s.warns > 50) return 'Jumlah warn harus 1–50.';
-  if (!Number.isInteger(s.periodDays) || s.periodDays < 1 || s.periodDays > MAX_EXPIRY_DAYS) return 'Periode harus 1–365 hari.';
   if (!(s.action in ACTIONS)) return `Hukuman "${s.action}" tidak dikenal.`;
   if (needsDuration(s.action)) {
     if (!(s.durationMs > 0)) return `${ACTIONS[s.action]} butuh durasi.`;
@@ -222,7 +221,7 @@ function stageError(s) {
   return null;
 }
 const describeStage = (s) => (s.action === 'timeout' || s.action === 'tempban' ? `${ACTIONS[s.action]} ${formatDuration(s.durationMs)}` : ACTIONS[s.action]);
-const stageLabel = (g, s) => `tahap ${g.config.escalation.indexOf(s) + 1}: ≥${s.warns} warn dalam ${s.periodDays} hari`;
+const stageLabel = (g, s) => `tahap ${g.config.escalation.indexOf(s) + 1}: ≥${s.warns} warn aktif`;
 
 settings = loadSettings();
 
@@ -272,13 +271,11 @@ function warnedMembers(g) {
   }
   return [...map.values()].sort((a, b) => b.count - a.count || b.last - a.last);
 }
-// Tahap eskalasi tertinggi yang terpenuhi (hanya warn aktif di dalam periode tahap itu)
+// Tahap eskalasi tertinggi yang terpenuhi, dihitung dari warn aktif (sesuai masa berlaku warn)
 function matchStage(g, userId) {
-  const now = Date.now();
-  const warns = activeWarns(g, userId);
+  const count = activeWarns(g, userId).length;
   let best = null;
   for (const s of g.config.escalation) {
-    const count = warns.filter((w) => w.createdAt > now - s.periodDays * DAY).length;
     if (count >= s.warns && (!best || s.warns > best.stage.warns)) best = { stage: s, count };
   }
   return best;
@@ -782,12 +779,11 @@ globalThis.SIM?.registerSettings?.({
       key: 'escalation', label: 'Tahapan eskalasi hukuman berdasarkan jumlah warn', type: 'table',
       columns: [
         { key: 'warns', label: 'Jumlah warn', type: 'number', min: 1, max: 50 },
-        { key: 'periodDays', label: 'Periode (hari)', type: 'number', min: 1, max: MAX_EXPIRY_DAYS },
         { key: 'action', label: 'Hukuman', type: 'select', options: Object.entries(ACTIONS).map(([value, label]) => ({ value, label })) },
         { key: 'duration', label: 'Durasi (angka)', type: 'number', min: 1, enabledWhen: { col: 'action', in: ['timeout', 'tempban'] } },
         { key: 'unit', label: 'Satuan durasi', type: 'select', options: [{ value: 'minutes', label: 'menit' }, { value: 'hours', label: 'jam' }, { value: 'days', label: 'hari' }], enabledWhen: { col: 'action', in: ['timeout', 'tempban'] } },
       ],
-      newRow: { warns: 1, periodDays: 30, action: 'timeout', duration: 10, unit: 'minutes' },
+      newRow: { warns: 1, action: 'timeout', duration: 10, unit: 'minutes' },
     },
     { key: 'autoActions', label: 'Aktifkan hukuman otomatis dari eskalasi (mati secara default)', type: 'boolean' },
     { key: 'allowBan', label: 'Izinkan ban permanen otomatis dari eskalasi (mati secara default)', type: 'boolean' },

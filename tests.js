@@ -71,9 +71,9 @@
     ok('Panel menolak masa berlaku 0 hari', /1–365/.test(def.set(v) || ''));
     v = def.get(); v.expiryDays = 400;
     ok('Panel menolak masa berlaku > 365 hari', /1–365/.test(def.set(v) || ''));
-    ok('Panel menolak jumlah warn kembar', /dua kali/.test(setStages((e) => [...e, { warns: 3, periodDays: 30, action: 'kick' }]) || ''));
+    ok('Panel menolak jumlah warn kembar', /dua kali/.test(setStages((e) => [...e, { warns: 3, action: 'kick' }]) || ''));
     ok('Panel menolak timeout > 28 hari', /28 hari/.test(setStages((e) => { e[0].unit = 'days'; e[0].duration = 40; return e; }) || ''));
-    ok('Panel menolak ban sementara tanpa durasi', /butuh durasi/.test(setStages((e) => [...e, { warns: 2, periodDays: 7, action: 'tempban', duration: '', unit: 'hours' }]) || ''));
+    ok('Panel menolak ban sementara tanpa durasi', /butuh durasi/.test(setStages((e) => [...e, { warns: 2, action: 'tempban', duration: '', unit: 'hours' }]) || ''));
     ok('Pengaturan tidak berubah kalau ditolak', cfgFile().expiryDays === 30 && cfgFile().escalation.length === 3);
     document.getElementById('open-settings').click();
     await wait(50);
@@ -130,7 +130,7 @@
     ok('Sakelar aktif: 4 warn → timeout 1 jam dijalankan', S.user(ID.riley).timeoutUntil > S.vNow() && /Timeout 1 jam ✅/.test(text(last)));
 
     // ---------- eskalasi: atur tahap ban sementara, lalu unban otomatis
-    setStages((e) => [...e, { warns: 2, periodDays: 7, action: 'tempban', duration: 2, unit: 'hours' }]);
+    setStages((e) => [...e, { warns: 2, action: 'tempban', duration: 2, unit: 'hours' }]);
     ok('Tahap eskalasi tersimpan & terurut', cfgFile().escalation.map((s) => s.warns).join(',') === '2,3,5,7');
     await slash('/mod warn member: @Hadi reason: x', ID.alex);
     await slash('/mod warn member: @Hadi reason: y', ID.alex);
@@ -150,21 +150,21 @@
       since(0).some((x) => x.channelId === '302' && /Ban sementara selesai/.test(text(x))));
     S.rejoin(ID.budi, true);
 
-    // ---------- eskalasi: periode per tahap
-    setStages((e) => e.filter((x) => x.warns !== 2).concat({ warns: 2, periodDays: 1, action: 'kick' }));
+    // ---------- eskalasi: dihitung dari warn aktif (masa berlaku), tahap tertinggi menang
+    ok('Kolom Periode tidak ada lagi di panel', !S.settingsDef.fields.find((f) => f.key === 'escalation').columns.some((c) => c.key === 'periodDays'));
+    setStages((e) => e.filter((x) => x.warns !== 2)); // tahap: 3 timeout, 5, 7
     await slash('/mod warn member: @Citra reason: a', ID.alex);
-    S.advance(2 * 86400e3);
-    await wait(150);
     await slash('/mod warn member: @Citra reason: b', ID.alex);
     await wait(250);
-    ok('Warn di luar periode tahap tidak memicu tahap itu', !S.user(ID.citra).gone && warnsOf(ID.citra).length === 2);
+    ok('2 warn tanpa tahap 2 → tidak ada tindakan', !S.user(ID.citra).gone && !(S.user(ID.citra).timeoutUntil > S.vNow()));
+    setStages((e) => e.concat({ warns: 2, action: 'kick' }));
     await slash('/mod warn member: @Citra reason: c', ID.alex);
     await wait(250);
     ok('Beberapa tahap terpenuhi → tahap tertinggi dipakai (timeout, bukan kick)', !S.user(ID.citra).gone && S.user(ID.citra).timeoutUntil > S.vNow());
     await slash('/mod warn member: @Dewi reason: a', ID.alex);
     await slash('/mod warn member: @Dewi reason: b', ID.alex);
     await wait(250);
-    ok('2 warn dalam 1 hari → kick', S.user('112').gone === 'kick');
+    ok('2 warn aktif → kick', S.user('112').gone === 'kick');
     S.rejoin('112', true);
     setCfg({ autoActions: false });
 
@@ -291,7 +291,7 @@
     ok('Navigasi halaman di warning-detail', /Halaman 2\/2/.test(text(det2)) && delBtns().length === 2);
 
     // ---------- regresi: tahap Kick diganti Timeout di panel Test settings
-    setStages(() => [{ warns: 1, periodDays: 30, action: 'kick' }]);
+    setStages(() => [{ warns: 1, action: 'kick' }]);
     document.getElementById('open-settings').click();
     await wait(50);
     const smBody = document.getElementById('sm-body');
@@ -304,7 +304,7 @@
     await wait(50);
     const st = cfgFile().escalation[0];
     ok('Panel: Kick → Timeout 3 menit tersimpan (satuan ikut pilihan yang tampil)', document.getElementById('sm-err').textContent === '' && st.action === 'timeout' && st.duration === 3 && st.unit === 'minutes');
-    ok('settings.json: satuan durasi salah → pesan jelas', /satuan durasi/.test(setStages(() => [{ warns: 1, periodDays: 30, action: 'timeout', duration: 3, unit: 'menit' }]) || ''));
+    ok('settings.json: satuan durasi salah → pesan jelas', /satuan durasi/.test(setStages(() => [{ warns: 1, action: 'timeout', duration: 3, unit: 'menit' }]) || ''));
 
     // ---------- tidak ada error di konsol
     const errs = S.logs.filter((l) => l.level === 'error' && !/FAIL/.test(l.text));

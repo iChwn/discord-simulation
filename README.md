@@ -24,7 +24,7 @@ Setelah edit `bot.js`, simpan → klik **↻ Restart bot**. Pesan di-reset, tapi
 ### Pengaturan di simulator — tombol **⚙ Test settings**
 Di bawah nama server ada tombol **⚙ Test settings**. Isinya semua pengaturan modul warn dalam satu panel:
 role staff (bisa lebih dari satu), channel mod-log, channel log warn, masa berlaku, tabel tahap eskalasi
-(jumlah warn, periode, hukuman, durasi + satuan), sakelar hukuman otomatis + izin ban permanen/kick/ban sementara,
+(jumlah warn, hukuman, durasi + satuan), sakelar hukuman otomatis + izin ban permanen/kick/ban sementara,
 dan channel untuk ban sementara yang perlu unban manual. Klik **Simpan** → langsung dipakai bot tanpa restart.
 
 Panel ini didaftarkan dari `bot.js` lewat `globalThis.SIM?.registerSettings?.(...)` dan menyimpan ke file
@@ -46,16 +46,17 @@ nyalakan Developer Mode di Discord), lalu restart bot. Contoh:
   "allowKick": false,
   "allowTempban": false,
   "escalation": [
-    { "warns": 3, "periodDays": 30, "action": "timeout", "duration": 1, "unit": "hours" },
-    { "warns": 5, "periodDays": 30, "action": "timeout", "duration": 1, "unit": "days" },
-    { "warns": 7, "periodDays": 60, "action": "tempban", "duration": 7, "unit": "days" }
+    { "warns": 3, "action": "timeout", "duration": 1, "unit": "hours" },
+    { "warns": 5, "action": "timeout", "duration": 1, "unit": "days" },
+    { "warns": 7, "action": "tempban", "duration": 7, "unit": "days" }
   ]
 }
 ```
 `action`: `none`, `timeout`, `kick`, `tempban`, `ban`. `unit`: `minutes`, `hours`, `days`.
 Kalau isinya tidak valid, bot menulis alasannya di log dan memakai pengaturan default (semua sakelar mati).
 
-Eskalasi default: ≥3 warn/30 hari → timeout 1 jam, ≥5/30 hari → timeout 1 hari, ≥7/60 hari → ban sementara 7 hari.
+Eskalasi default: ≥3 warn aktif → timeout 1 jam, ≥5 → timeout 1 hari, ≥7 → ban sementara 7 hari.
+Jumlah warn dihitung dari warn yang masih aktif, sesuai **masa berlaku warn**.
 Kalau beberapa tahap terpenuhi, yang dipakai tahap dengan jumlah warn tertinggi. Timeout cukup pakai sakelar utama;
 kick, ban sementara, dan ban permanen butuh sakelar utama **dan** izinnya masing-masing. Kalau belum diizinkan,
 kartu warn cuma menulis tindakan yang *akan* dijalankan.

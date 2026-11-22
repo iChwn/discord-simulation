@@ -5,6 +5,15 @@
    ===================================================================== */
 window.SIM_VERSIONS = [
   {
+    version: '1.6',
+    date: '2026-11-22',
+    title: 'Eskalasi pakai masa berlaku warn',
+    changes: [
+      { type: 'ubah', text: 'Kolom "Periode (hari)" di tahap eskalasi dihapus — semua tahap menghitung warn aktif sesuai masa berlaku warn.' },
+      { type: 'ubah', text: 'settings.json lama yang masih berisi periodDays tetap bisa dibaca (nilainya diabaikan).' },
+    ],
+  },
+  {
     version: '1.5.1',
     date: '2026-11-22',
     title: 'Perbaikan Test settings',
